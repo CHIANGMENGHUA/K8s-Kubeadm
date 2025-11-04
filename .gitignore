@@ -66,4 +66,4 @@ override.tf.json
 terraform.rc
 
 # Ignore custom scripts or command files
-commands.txt
+README.md
