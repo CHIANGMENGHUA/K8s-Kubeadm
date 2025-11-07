@@ -1,0 +1,122 @@
+# Kubernetes deployment manifest for batch-processing-demo Spring Boot application
+# Access via: http://192.168.56.10:32191
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: batch-processing-demo-deployment
+  labels:
+    app: batch-processing-demo
+    version: 0.0.1-SNAPSHOT
+spec:
+  selector:
+    matchLabels:
+      app: batch-processing-demo
+  replicas: 2
+  template:
+    metadata:
+      labels:
+        app: batch-processing-demo
+        version: 0.0.1-SNAPSHOT
+    spec:
+      containers:
+      - name: batch-processing-demo
+        image: batch-processing-demo:0.0.1-SNAPSHOT
+        imagePullPolicy: Never  # Use local image since it's built locally
+        resources:
+          limits:
+            cpu: "1.0"
+            memory: "768Mi"
+          requests:
+            cpu: "0.5"
+            memory: "512Mi"
+        ports:
+        - containerPort: 9191
+          name: http
+        env:
+        - name: JAVA_OPTS
+          value: "-Xmx512m -Xms256m -XX:+UseG1GC -XX:+UseContainerSupport"
+        - name: SPRING_PROFILES_ACTIVE
+          value: "production"
+        livenessProbe:
+          httpGet:
+            path: /actuator/health
+            port: 9191
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /actuator/health/readiness
+            port: 9191
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        # Graceful shutdown
+        lifecycle:
+          preStop:
+            exec:
+              command: ["/bin/sh", "-c", "sleep 15"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: batch-processing-demo-service
+  labels:
+    app: batch-processing-demo
+spec:
+  selector:
+    app: batch-processing-demo
+  type: NodePort
+  ports:
+    - port: 9191
+      targetPort: 9191
+      nodePort: 32191
+      protocol: TCP
+      name: http
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: batch-processing-demo-config
+data:
+  application.properties: |
+    # Spring Boot Configuration for Kubernetes
+    server.port=9191
+    management.endpoints.web.exposure.include=health,info,metrics
+    management.endpoint.health.show-details=always
+    management.health.probes.enabled=true
+    
+    # Logging configuration
+    logging.level.com.javatechie=INFO
+    logging.pattern.console=%d{yyyy-MM-dd HH:mm:ss} - %msg%n
+    
+    # Batch processing configuration
+    spring.batch.job.enabled=true
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: batch-processing-demo-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: batch-processing-demo-deployment
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 50
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: AverageValue
+        averageValue: "1024Mi"

@@ -1,0 +1,38 @@
+# Git files
+.git
+.gitignore
+README.md
+
+# Maven/Gradle build files
+target/
+build/
+pom.xml
+*.gradle
+gradle/
+gradlew
+gradlew.bat
+
+# IDE files
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# Documentation
+docs/
+*.md
