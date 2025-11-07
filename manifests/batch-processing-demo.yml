@@ -19,6 +19,7 @@ spec:
         app: batch-processing-demo
         version: 0.0.1-SNAPSHOT
     spec:
+      hostNetwork: true
       containers:
       - name: batch-processing-demo
         image: localhost:5000/batch-processing-demo:0.0.1-SNAPSHOT
