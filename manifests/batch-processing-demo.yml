@@ -22,7 +22,7 @@ spec:
       containers:
       - name: batch-processing-demo
         image: 192.168.56.10:32000/batch-processing-demo:0.0.1-SNAPSHOT
-        imagePullPolicy: Never  # Use local image since it's built locally
+        imagePullPolicy: IfNotPresent
         resources:
           limits:
             cpu: "1.0"
