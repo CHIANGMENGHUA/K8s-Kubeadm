@@ -21,7 +21,7 @@ spec:
     spec:
       containers:
       - name: batch-processing-demo
-        image: docker.io/library/batch-processing-demo:0.0.1-SNAPSHOT
+        image: batch-processing-demo:0.0.1-SNAPSHOT
         imagePullPolicy: IfNotPresent
         resources:
           limits:
