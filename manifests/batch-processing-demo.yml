@@ -21,8 +21,8 @@ spec:
     spec:
       containers:
       - name: batch-processing-demo
-        image: batch-processing-demo
-        imagePullPolicy: Never  # Use local image since it's built locally
+        image: batch-processing-demo:0.0.1-SNAPSHOT
+        imagePullPolicy: IfNotPresent
         resources:
           limits:
             cpu: "1.0"
