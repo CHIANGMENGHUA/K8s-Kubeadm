@@ -22,7 +22,7 @@ spec:
       containers:
       - name: batch-processing-demo
         image: batch-processing-demo:0.0.1-SNAPSHOT
-        imagePullPolicy: IfNotPresent
+        imagePullPolicy: NEVER
         resources:
           limits:
             cpu: "1.0"
