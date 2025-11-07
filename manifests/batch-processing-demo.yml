@@ -21,7 +21,7 @@ spec:
     spec:
       containers:
       - name: batch-processing-demo
-        image: batch-processing-demo:0.0.1-SNAPSHOT
+        image: 192.168.56.101:32000/batch-processing-demo:0.0.1-SNAPSHOT
         imagePullPolicy: IfNotPresent
         resources:
           limits:
