@@ -21,8 +21,8 @@ spec:
     spec:
       containers:
       - name: batch-processing-demo
-        image: batch-processing-demo:0.0.1-SNAPSHOT
-        imagePullPolicy: Never
+        image: localhost:5000/batch-processing-demo:0.0.1-SNAPSHOT
+        imagePullPolicy: IfNotPresent
         resources:
           limits:
             cpu: "1.0"
