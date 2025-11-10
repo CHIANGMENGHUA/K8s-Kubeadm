@@ -76,7 +76,11 @@ docker image prune -af 2>/dev/null || true
 echo
 
 echo "=== Step 8: optionally recreate a clean registry (comment out if you don't want) ==="
+docker save batch-processing-demo:0.0.1-SNAPSHOT -o batch-processing-demo-0.0.1-SNAPSHOT.tar
 docker run -d -p 5000:5000 --name registry --restart=always registry:2 || true
+skopeo copy --dest-tls-verify=false \
+  docker-archive:batch-processing-demo-0.0.1-SNAPSHOT.tar \
+  docker://localhost:5000/batch-processing-demo:0.0.1-SNAPSHOT
 sleep 2
 
 echo "=== Step 9: restart runtimes ==="
