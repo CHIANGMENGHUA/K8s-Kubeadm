@@ -36,7 +36,7 @@ spec:
       labels:
         app: registry
     spec:
-      # 允許排到 control-plane / master（容忍 node 的 taint）
+      # 允許排到 control-plane / master（容忍 taint）
       tolerations:
       - key: "node-role.kubernetes.io/control-plane"
         operator: "Exists"
@@ -45,7 +45,7 @@ spec:
         operator: "Exists"
         effect: "NoSchedule"
 
-      # 可選：若已標記 master node (kubectl label node <master> registry=enabled)，下面 nodeSelector 會限制只排到該 node
+      # 若你剛才已 label node (<node> registry=enabled)，這會確保 pod 排在該 node
       nodeSelector:
         registry: "enabled"
 
@@ -54,9 +54,8 @@ spec:
         image: registry:2
         ports:
         - containerPort: 5000
+          hostPort: 5000      # <-- 正確位置：在 ports 列表裡
           protocol: TCP
-        # 讓 node 的 <master-ip>:5000 可直接連到 pod（快速方法）
-        hostPort: 5000
         volumeMounts:
         - name: registry-data
           mountPath: /var/lib/registry
