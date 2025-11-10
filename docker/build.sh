@@ -86,11 +86,10 @@ if [ ${PUSH_RC} -ne 0 ]; then
   exit ${PUSH_RC}
 fi
 
+kubectl set image deployment/batch-processing-demo-deployment batch-processing-demo=192.168.56.10:5000/batch-processing-demo:0.0.1-SNAPSHOT -n default
+
 echo
 echo "✅ SUCCESS: pushed ${IMAGE_NAME}"
 
-echo
-echo "To update a k8s Deployment:"
-echo "  kubectl set image deployment/<your-deployment> <container-name>=${IMAGE_NAME} -n <namespace>"
 echo
 echo "=== finished ==="
