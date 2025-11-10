@@ -83,7 +83,7 @@ FULL_IMAGE_NAME="${IMAGE_NAME}:${IMAGE_TAG}"
 echo "Building Docker image: ${FULL_IMAGE_NAME}"
 
 # Build the Docker image
-sudo docker build -t "${FULL_IMAGE_NAME}" .
+sudo docker build --no-cache -t "${FULL_IMAGE_NAME}" .
 
 echo "✅ Docker image built successfully: ${FULL_IMAGE_NAME}"
 echo ""
