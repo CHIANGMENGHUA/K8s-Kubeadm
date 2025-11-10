@@ -9,6 +9,9 @@ REPO="${REPO:-batch-processing-demo}"
 TAG="${TAG:-0.0.1-SNAPSHOT}"
 JAR_PATH="${JAR_PATH:-./batch-processing-demo-0.0.1-SNAPSHOT.jar}"
 DOCKERFILE_PATH="${DOCKERFILE_PATH:-./Dockerfile}"
+NAMESPACE="${NAMESPACE:-default}"  # Kubernetes namespace
+DEPLOYMENT="${DEPLOYMENT:-batch-processing-demo-deployment}"  # Deployment name
+CONTAINER="${CONTAINER:-batch-processing-demo}"  # container name inside deployment
 ### end config ###
 
 IMAGE_NAME="${REGISTRY_HOST}:${REGISTRY_PORT}/${REPO}:${TAG}"
@@ -89,8 +92,9 @@ fi
 echo
 echo "✅ SUCCESS: pushed ${IMAGE_NAME}"
 
-echo
-echo "To update a k8s Deployment:"
-echo "  kubectl set image deployment/<your-deployment> <container-name>=${IMAGE_NAME} -n <namespace>"
-echo
+# --- Update Kubernetes Deployment ---
+echo "Updating Kubernetes Deployment ${DEPLOYMENT} ..."
+kubectl set image deployment/"${DEPLOYMENT}" "${CONTAINER}"="${IMAGE_NAME}" -n "${NAMESPACE}"
+
+echo "✅ Deployment updated to use image ${IMAGE_NAME}"
 echo "=== finished ==="
