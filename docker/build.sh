@@ -127,4 +127,4 @@ echo
 echo "crictl images:"
 crictl images || true
 
-echo "=== Done: batch-processing-demo removed from registry and local images cleaned ==="
+echo "=== Finished ==="
