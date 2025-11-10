@@ -1,91 +1,131 @@
-#!/usr/bin/env bash
 set -euo pipefail
 
-### Config (可用環境變數覆蓋) ###
-REGISTRY_HOST="${REGISTRY_HOST:-192.168.56.10}"
-REGISTRY_PORT="${REGISTRY_PORT:-5000}"
-REPO="${REPO:-batch-processing-demo}"
-TAG="${TAG:-0.0.1-SNAPSHOT}"
-JAR_PATH="${JAR_PATH:-./batch-processing-demo-0.0.1-SNAPSHOT.jar}"
-DOCKERFILE_PATH="${DOCKERFILE_PATH:-./Dockerfile}"
-K8S_DEPLOYMENT="${K8S_DEPLOYMENT:-batch-processing-demo-deployment}"
-K8S_CONTAINER="${K8S_CONTAINER:-batch-processing-demo}"
-K8S_NAMESPACE="${K8S_NAMESPACE:-default}"
-### end config ###
+REPO="batch-processing-demo"
+TAG="0.0.1-SNAPSHOT"
+REG_URL="http://localhost:5000"
 
-IMAGE_NAME="${REGISTRY_HOST}:${REGISTRY_PORT}/${REPO}:${TAG}"
-LOCAL_TAG="${REPO}:${TAG}"
-
-echo "=== deploy-and-push-use-dockerfile.sh ==="
-echo "Registry: ${REGISTRY_HOST}:${REGISTRY_PORT}"
-echo "Target image: ${IMAGE_NAME}"
-echo "Jar source: ${JAR_PATH}"
-echo "Dockerfile: ${DOCKERFILE_PATH}"
-echo "K8s Deployment: ${K8S_DEPLOYMENT}"
-echo "K8s Container: ${K8S_CONTAINER}"
-echo "Namespace: ${K8S_NAMESPACE}"
+echo "=== Step 0: current catalog ==="
+curl -s ${REG_URL}/v2/_catalog | jq . || true
 echo
 
-# checks
-[ ! -f "${JAR_PATH}" ] && echo "ERROR: JAR not found at ${JAR_PATH}" && exit 1
-[ ! -f "${DOCKERFILE_PATH}" ] && echo "ERROR: Dockerfile not found at ${DOCKERFILE_PATH}" && exit 1
+echo "=== Step 1: try to delete manifest via API (get digest) ==="
+DIGEST=$(curl -sI -H "Accept: application/vnd.docker.distribution.manifest.v2+json" \
+  "${REG_URL}/v2/${REPO}/manifests/${TAG}" 2>/dev/null \
+  | awk -F': ' '/Docker-Content-Digest/{print $2}' | tr -d $'\r' || true)
 
-# clean up old images
-echo "Checking for old docker images..."
-if docker images | grep -q "${REPO}.*${TAG}"; then
-  echo "Removing old images for ${REPO}:${TAG} ..."
-  docker rmi -f "${LOCAL_TAG}" >/dev/null 2>&1 || true
-  docker rmi -f "${IMAGE_NAME}" >/dev/null 2>&1 || true
+if [ -n "$DIGEST" ]; then
+  echo "Found digest: $DIGEST"
+  echo "Deleting manifest ${REPO}:${TAG} -> ${DIGEST} ..."
+  curl -v -X DELETE "${REG_URL}/v2/${REPO}/manifests/${DIGEST}" || true
 else
-  echo "No old images found for ${REPO}:${TAG}."
+  echo "No manifest digest found for ${REPO}:${TAG} (or manifest not accessible). Will proceed to wipe storage."
 fi
 echo
 
-# create temp build dir
-TMP_BUILD_DIR=$(mktemp -d)
-trap 'rm -rf "${TMP_BUILD_DIR}"' EXIT
+echo "=== Step 2: stop registry container ==="
+docker stop registry 2>/dev/null || true
+docker rm registry 2>/dev/null || true
+sleep 1
 
-cp "${DOCKERFILE_PATH}" "${TMP_BUILD_DIR}/Dockerfile"
-
-COPY_SRC=$(awk 'BEGIN{IGNORECASE=1} /^[[:space:]]*COPY[[:space:]]+/ { print $2; exit }' "${DOCKERFILE_PATH}" || true)
-[ -z "${COPY_SRC}" ] || [ "${COPY_SRC}" = "-" ] && COPY_SRC="app.jar"
-COPY_SRC_BASENAME=$(basename "${COPY_SRC}")
-cp "${JAR_PATH}" "${TMP_BUILD_DIR}/${COPY_SRC_BASENAME}"
-
-echo "Build context files:"
-ls -l "${TMP_BUILD_DIR}"
+echo "=== Step 3: garbage-collect (if registry data present) ==="
+# 假設 registry 存放資料於 /var/lib/registry (如不同請調整)
+if [ -d /var/lib/registry ]; then
+  echo "Running registry garbage-collect (will mount host paths into ephemeral container)"
+  docker run --rm -v /var/lib/registry:/var/lib/registry -v /etc/docker/registry:/etc/docker/registry \
+    registry:2 bin/registry garbage-collect /etc/docker/registry/config.yml || true
+  echo "Garbage-collect finished (if config.yml exists)."
+else
+  echo "/var/lib/registry not found on host; skipping garbage-collect."
+fi
 echo
 
-# Build image with --no-cache
-echo "Building local docker image: ${LOCAL_TAG} ..."
-docker build --no-cache -t "${LOCAL_TAG}" "${TMP_BUILD_DIR}"
+echo "=== Step 4: wipe registry storage to ensure deletion (irreversible) ==="
+if [ -d /var/lib/registry ]; then
+  sudo rm -rf /var/lib/registry/* || true
+  echo "/var/lib/registry/* removed"
+else
+  echo "No /var/lib/registry, skip wiping storage."
+fi
+echo
 
-# Tag for registry
-docker tag "${LOCAL_TAG}" "${IMAGE_NAME}"
+echo "=== Step 5: remove any skopeo dir/tars ==="
+sudo rm -rf /var/lib/containers/storage/converted-image 2>/dev/null || true
+rm -f batch-processing-demo*.tar myimage*.tar 2>/dev/null || true
+echo "Removed skopeo artifacts if present."
+echo
 
-# Push image
-echo "Pushing ${IMAGE_NAME} ..."
-set +e
-docker push "${IMAGE_NAME}"
-PUSH_RC=$?
+echo "=== Step 6: remove images from containerd (k8s.io and moby) ==="
+if sudo ctr namespaces list | grep -q '^k8s.io'; then
+  echo "Removing images in k8s.io..."
+  sudo ctr -n k8s.io images list -q | while read -r img; do
+    [ -n "$img" ] && echo " -> rm $img" && sudo ctr -n k8s.io images rm "$img" || true
+  done
+fi
+if sudo ctr namespaces list | grep -q '^moby'; then
+  echo "Removing images in moby..."
+  sudo ctr -n moby images list -q | while read -r img; do
+    [ -n "$img" ] && echo " -> rm $img" && sudo ctr -n moby images rm "$img" || true
+  done
+fi
+echo
+
+echo "=== Step 7: remove docker images related to repo (if any) ==="
+docker rmi -f localhost:5000/${REPO}:${TAG} 2>/dev/null || true
+docker rmi -f $(docker images | awk '/batch-processing-demo/ {print $3}') 2>/dev/null || true
+docker image prune -af 2>/dev/null || true
+
 set -e
-[ ${PUSH_RC} -ne 0 ] && echo "ERROR: docker push failed" && exit ${PUSH_RC}
-echo "✅ SUCCESS: pushed ${IMAGE_NAME}"
+
+IMAGE_NAME="batch-processing-demo"
+IMAGE_TAG="0.0.1-SNAPSHOT"
+FULL_IMAGE_NAME="${IMAGE_NAME}:${IMAGE_TAG}"
+
+echo "Building Docker image: ${FULL_IMAGE_NAME}"
+
+# Build the Docker image
+sudo docker build -t "${FULL_IMAGE_NAME}" .
+
+echo "✅ Docker image built successfully: ${FULL_IMAGE_NAME}"
+echo ""
+echo "To run the container:"
+echo "  docker run -d -p 9191:9191 --name batch-processing-demo ${FULL_IMAGE_NAME}"
+echo ""
+echo "To view logs:"
+echo "  docker logs -f batch-processing-demo"
+echo ""
+echo "To stop and remove:"
+echo "  docker stop batch-processing-demo && docker rm batch-processing-demo"
 echo
 
-# Pre-pull image on all nodes
-echo "Pre-pulling image on all cluster nodes..."
-for node in $(kubectl get nodes -o name); do
-  node_name=${node#node/}
-  echo "Pulling image on node ${node_name} ..."
-  kubectl debug node/"${node_name}" -it --image=busybox -- chroot /host sh -c "ctr -n k8s.io images pull ${IMAGE_NAME}" || true
-done
-echo "✅ Image pre-pulled on all nodes"
-echo
+echo "=== Step 8: optionally recreate a clean registry (comment out if you don't want) ==="
+rm -rf batch-processing-demo-0.0.1-SNAPSHOT.tar || true
+docker save batch-processing-demo:0.0.1-SNAPSHOT -o batch-processing-demo-0.0.1-SNAPSHOT.tar
+docker run -d -p 5000:5000 --name registry --restart=always registry:2 || true
+skopeo copy --dest-tls-verify=false \
+  docker-archive:batch-processing-demo-0.0.1-SNAPSHOT.tar \
+  docker://localhost:5000/batch-processing-demo:0.0.1-SNAPSHOT
+sleep 2
 
-# Update Kubernetes deployment
-echo "Updating Kubernetes Deployment ${K8S_DEPLOYMENT} ..."
-kubectl set image deployment/"${K8S_DEPLOYMENT}" "${K8S_CONTAINER}"="${IMAGE_NAME}" -n "${K8S_NAMESPACE}"
-echo "✅ Deployment updated to use image ${IMAGE_NAME}"
+echo "=== Step 9: restart runtimes ==="
+sudo systemctl restart crio || true
+sudo systemctl restart containerd || true
+sudo systemctl restart docker || true
+sleep 2
+
+echo "=== Verification ==="
+echo "Registry catalog:"
+curl -s ${REG_URL}/v2/_catalog || true
 echo
-echo "=== finished ==="
+echo "ctr k8s.io images list:"
+sudo ctr -n k8s.io images list || true
+echo
+echo "ctr moby images list:"
+sudo ctr -n moby images list || true
+echo
+echo "docker images:"
+docker images || true
+echo
+echo "crictl images:"
+crictl images || true
+
+echo "=== Finished ==="
