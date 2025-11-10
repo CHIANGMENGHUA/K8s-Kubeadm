@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# deploy-and-push-use-dockerfile.sh
 set -euo pipefail
 
 ### Config (可用環境變數覆蓋) ###
@@ -9,9 +8,9 @@ REPO="${REPO:-batch-processing-demo}"
 TAG="${TAG:-0.0.1-SNAPSHOT}"
 JAR_PATH="${JAR_PATH:-./batch-processing-demo-0.0.1-SNAPSHOT.jar}"
 DOCKERFILE_PATH="${DOCKERFILE_PATH:-./Dockerfile}"
-NAMESPACE="${NAMESPACE:-default}"  # Kubernetes namespace
-DEPLOYMENT="${DEPLOYMENT:-batch-processing-demo-deployment}"  # Deployment name
-CONTAINER="${CONTAINER:-batch-processing-demo}"  # container name inside deployment
+K8S_DEPLOYMENT="${K8S_DEPLOYMENT:-batch-processing-demo-deployment}"
+K8S_CONTAINER="${K8S_CONTAINER:-batch-processing-demo}"
+K8S_NAMESPACE="${K8S_NAMESPACE:-default}"
 ### end config ###
 
 IMAGE_NAME="${REGISTRY_HOST}:${REGISTRY_PORT}/${REPO}:${TAG}"
@@ -22,6 +21,9 @@ echo "Registry: ${REGISTRY_HOST}:${REGISTRY_PORT}"
 echo "Target image: ${IMAGE_NAME}"
 echo "Jar source: ${JAR_PATH}"
 echo "Dockerfile: ${DOCKERFILE_PATH}"
+echo "K8s Deployment: ${K8S_DEPLOYMENT}"
+echo "K8s Container: ${K8S_CONTAINER}"
+echo "Namespace: ${K8S_NAMESPACE}"
 echo
 
 # checks
@@ -53,6 +55,7 @@ trap 'rm -rf "${TMP_BUILD_DIR}"' EXIT
 echo "Preparing build context in ${TMP_BUILD_DIR} ..."
 cp "${DOCKERFILE_PATH}" "${TMP_BUILD_DIR}/Dockerfile"
 
+# parse COPY source
 COPY_SRC=$(awk 'BEGIN{IGNORECASE=1} /^[[:space:]]*COPY[[:space:]]+/ { print $2; exit }' "${DOCKERFILE_PATH}" || true)
 if [ -z "${COPY_SRC}" ] || [ "${COPY_SRC}" = "-" ]; then
   echo "Warning: couldn't parse COPY source from Dockerfile, defaulting to app.jar"
@@ -63,14 +66,17 @@ cp "${JAR_PATH}" "${TMP_BUILD_DIR}/${COPY_SRC_BASENAME}"
 
 echo "Build context files:"
 ls -l "${TMP_BUILD_DIR}"
-
 echo
-echo "Building local docker image: ${LOCAL_TAG} ..."
-docker build -t "${LOCAL_TAG}" "${TMP_BUILD_DIR}"
 
+# Build image with --no-cache
+echo "Building local docker image: ${LOCAL_TAG} ..."
+docker build --no-cache -t "${LOCAL_TAG}" "${TMP_BUILD_DIR}"
+
+# Tag for registry
 echo "Tagging ${LOCAL_TAG} -> ${IMAGE_NAME}"
 docker tag "${LOCAL_TAG}" "${IMAGE_NAME}"
 
+# Push image
 echo "Pushing ${IMAGE_NAME} ..."
 set +e
 docker push "${IMAGE_NAME}"
@@ -91,10 +97,12 @@ fi
 
 echo
 echo "✅ SUCCESS: pushed ${IMAGE_NAME}"
+echo
 
-# --- Update Kubernetes Deployment ---
-echo "Updating Kubernetes Deployment ${DEPLOYMENT} ..."
-kubectl set image deployment/"${DEPLOYMENT}" "${CONTAINER}"="${IMAGE_NAME}" -n "${NAMESPACE}"
-
+# Update Kubernetes deployment
+echo "Updating Kubernetes Deployment ${K8S_DEPLOYMENT} ..."
+kubectl set image deployment/"${K8S_DEPLOYMENT}" "${K8S_CONTAINER}"="${IMAGE_NAME}" -n "${K8S_NAMESPACE}"
 echo "✅ Deployment updated to use image ${IMAGE_NAME}"
+
+echo
 echo "=== finished ==="
