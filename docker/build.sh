@@ -99,7 +99,7 @@ echo
 
 echo "=== Step 8: optionally recreate a clean registry (comment out if you don't want) ==="
 rm -rf batch-processing-demo-0.0.1-SNAPSHOT.tar || true
-crictl rmi localhost:5000/batch-processing-demo || true
+crictl rmi batch-processing-demo || true
 docker save batch-processing-demo:0.0.1-SNAPSHOT -o batch-processing-demo-0.0.1-SNAPSHOT.tar
 docker run -d -p 5000:5000 --name registry --restart=always registry:2 || true
 skopeo copy --dest-tls-verify=false \
