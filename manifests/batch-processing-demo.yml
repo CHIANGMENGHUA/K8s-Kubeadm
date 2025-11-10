@@ -19,7 +19,6 @@ spec:
         app: batch-processing-demo
         version: 0.0.1-SNAPSHOT
     spec:
-      restartPolicy: Never
       containers:
       - name: batch-processing-demo
         image: localhost:5000/batch-processing-demo:0.0.1-SNAPSHOT
@@ -39,6 +38,14 @@ spec:
           value: "-Xmx512m -Xms256m -XX:+UseG1GC -XX:+UseContainerSupport"
         - name: SPRING_PROFILES_ACTIVE
           value: "production"
+        - name: SPRING_DATASOURCE_URL
+          value: "jdbc:mysql://external-db-svc:3306/batch"
+        - name: SPRING_DATASOURCE_USERNAME
+          value: "admin"
+        - name: SPRING_DATASOURCE_PASSWORD
+          value: "admin123"
+        - name: SPRING_DATASOURCE_DRIVER
+          value: "com.mysql.cj.jdbc.Driver"
         livenessProbe:
           httpGet:
             path: /actuator/health
@@ -96,28 +103,28 @@ data:
     
     # Batch processing configuration
     spring.batch.job.enabled=true
-# ---
-# apiVersion: autoscaling/v2
-# kind: HorizontalPodAutoscaler
-# metadata:
-#   name: batch-processing-demo-hpa
-# spec:
-#   scaleTargetRef:
-#     apiVersion: apps/v1
-#     kind: Deployment
-#     name: batch-processing-demo-deployment
-#   minReplicas: 2
-#   maxReplicas: 10
-#   metrics:
-#   - type: Resource
-#     resource:
-#       name: cpu
-#       target:
-#         type: Utilization
-#         averageUtilization: 50
-#   - type: Resource
-#     resource:
-#       name: memory
-#       target:
-#         type: AverageValue
-#         averageValue: "1024Mi"
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: batch-processing-demo-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: batch-processing-demo-deployment
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 50
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: AverageValue
+        averageValue: "1024Mi"
